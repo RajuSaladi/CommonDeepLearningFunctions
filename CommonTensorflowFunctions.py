@@ -1,5 +1,7 @@
 import tensorflow as tf
 import math
+import random
+
 
 class NeuralNetworkBlocks:
 
@@ -8,7 +10,7 @@ class NeuralNetworkBlocks:
 
 	def maxPoolingLayerTF(self,inputToBlock,poolSize,strideNumber):
 		return tf.layers.max_pooling2d(inputs=inputToBlock, pool_size=poolSize, strides=strideNumber,name = layerName)
-	
+
 	def dropoutLayerTF(self,inputToBlock,keepProbability,layerName):
 		return tf.nn.dropout(inputs= inputToBlock,keep_prob = keepProbability,name = layerName)
 
@@ -26,11 +28,13 @@ class NeuralNetworkBlocks:
 			outNormalizedLayer = tf.nn.sigmoid(normalizedLayer)
 		elif(activation == "Relu"):
 			outNormalizedLayer = tf.nn.relu(normalizedLayer)
+		elif(activation == "LeakyRelu"):
+			outNormalizedLayer = tf.nn.leaky_relu(normalizedLayer, name = layerName)
 		else:
 			outNormalizedLayer = normalizedLayer
 		return outNormalizedLayer
 	
-	def batchNormalizationLayer(self,inputToBlock,weightSize,epsilon = 1e-3,activation = "None",layerName):
+	def batchNormalizationLayer(self,inputToBlock,weightSize,layerName,epsilon = 1e-3,activation = "None"):
 		w_initial = np.random.normal(size=weightSize).astype(np.float32)
 		w = tf.Variable(w_initial)
 		z = tf.matmul(inputToBlock,w)
@@ -45,12 +49,13 @@ class NeuralNetworkBlocks:
 			outNormalizedLayer = tf.nn.sigmoid(normalizedLayer,name = layerName)
 		elif(activation == "Relu"):
 			outNormalizedLayer = tf.nn.relu(normalizedLayer, name = layerName)
+		elif(activation == "LeakyRelu"):
+			outNormalizedLayer = tf.nn.leaky_relu(normalizedLayer, name = layerName)
 		else:
 			outNormalizedLayer = normalizedLayer
 		return outNormalizedLayer
 
-	
-	def convultionLayer(self,inputToBlock,filterSize,noOfFilters,strideNumber,paddingType = "SAME",layerName):
+	def convultionLayer(self,inputToBlock,filterSize,noOfFilters,strideNumber,layerName,paddingType = "SAME"):
 		W = tf.get_variable(name='W',shape=[filterSize[0],filterSize[1],inputToBlock.shape[2],noOfFilters],initializer=tf.random_normal_initializer(mean=0.0, stddev=0.02))
 		conv = tf.nn.conv2d(inputToBlock, W, strides = [1, strideNumber, strideNumber, 1], padding=paddingType)
 		b = tf.get_variable('b', shape=[noOfFilters], tf.constant_initializer(0.0),dtype=tf.float32)
@@ -58,9 +63,107 @@ class NeuralNetworkBlocks:
 		convLayer = tf.nn.relu(preActivationLayer, name=layerName)
 		return convLayer
 
+	def convultionBlock1D(self,inputToBlock,filterSize,noOfFilters,strideNumber,layerName,subLayerList = ["Conv":"1D","Pool":"Max","Activation":"None"],paddingType = "SAME",activation="None"):
+		filterShape = [filterSize,1,noOfFilters]
+		wFilt = tf.Variable(tf.truncated_normal(filterShape, stddev=0.03),name=layerName+'_wFilt')
+		bias = tf.Variable(tf.truncated_normal([noOfFilters], stddev=0.03),name=layerName+'_bias')
+		convLayer = tf.nn.conv1d(inputToBlock,wFilt,strides = [1, strideNumber, 1],padding=paddingType)
+		preActivationLayer = tf.nn.bias_add(conv, b)
+		if(activation == "None"):
+			postActivationLayer = preActivationLayer
+		elif(activation == "Sigmoid"):
+			postActivationLayer = tf.nn.sigmoid(preActivationLayer,name = layerName)
+		elif(activation == "Relu"):
+			postActivationLayer = tf.nn.relu(preActivationLayer, name = layerName)
+		elif(activation == "LeakyRelu"):
+			postActivationLayer = tf.nn.leaky_relu(preActivationLayer, name = layerName)
+		else:
+			postActivationLayer = preActivationLayer
+		return postActivationLayer
+
+	def convultionBlock(self,inputToBlock,layerConfig,layerName):
+		layerConfig = {"Conv":{"ConvType":CONVTYPE,"FilterSize":FILTERSIZE,"NoOfFilters":NOOFFILTERS,"Stride":STRIDENUMBER,"PaddingType":PADDINGTYPE},
+						"Pool":{"PoolingType":POOLINGTYPE,"PoolSize":POOLSIZE,"Strides":POOLSTRIDENUMBER},
+						"Activation":{"ActivationType":ACTIVATIONTYPE},
+					}
+
+		if(layerConfig["Conv"]["ConvType"] == "1D"):
+			#Z = self.convultionLayer1D(inputToBlock,filterSize,noOfFilters,strideNumber,paddingType,layerName)
+			Z = self.convultionLayer1D(inputToBlock,layerConfig["Conv"]["FilterSize"],layerConfig["Conv"]["NoOfFilters"],layerConfig["Conv"]["Stride"],layerConfig["Conv"]["PaddingType"],layerName)
+			if "Pool" in layerConfig.keys():
+				if(layerConfig["Pool"]["PoolingType"] is not None):
+					Z = self.poolLayer1D(Z,layerConfig["Pool"]["PoolingType"],layerConfig["Pool"]["poolSize"],layerConfig["Pool"]["Strides"],layerName)
+					#Z = self.poolLayer1D(Z,poolingType,poolSize,strideNumber,layerName)
+			if "Activation" in layerConfig.keys():
+				if (layerConfig["Activation"]["ActivationType"] is not None):
+					Z = self.activationLayer(Z,layerConfig["Activation"]["ActivationType"],layerName)
+					#Z = self.activationLayer(Z,activation,layerName)
+		elif(layerConfig["Conv"]["ConvType"] == "2D"):
+
+			#Z = self.convultionLayer2D(inputToBlock,filterSize,noOfFilters,strideNumber,paddingType,layerName)
+			Z = self.convultionLayer2D(inputToBlock,layerConfig["Conv"]["FilterSize"],layerConfig["Conv"]["NoOfFilters"],layerConfig["Conv"]["Stride"],layerConfig["Conv"]["PaddingType"],layerName)
+			if "Pool" in layerConfig.keys():
+				if(layerConfig["Pool"]["PoolingType"] is not None):
+					Z = self.poolLayer2D(Z,layerConfig["Pool"]["PoolingType"],layerConfig["Pool"]["poolSize"],layerConfig["Pool"]["Strides"],layerName)
+					#Z = self.poolLayer2D(Z,poolingType,poolSize,strideNumber,layerName)
+			if "Activation" in layerConfig.keys():
+				if (layerConfig["Activation"]["ActivationType"] is not None):
+					Z = self.activationLayer(Z,layerConfig["Activation"]["ActivationType"],layerName)
+					#Z = self.activationLayer(Z,activation,layerName)
+		else:
+			print("Warninig: Required Configuration is not available.")
+			Z = inputToBlock
+		return Z
+
+	def convultionLayer1D(self,inputToBlock,filterSize,noOfFilters,strideNumber,paddingType,layerName):
+		filterShape = [filterSize,1,noOfFilters]
+		wFilt = tf.Variable(tf.truncated_normal(filterShape, stddev=0.03),name=layerName+'_wFilt1D')
+		bias = tf.Variable(tf.truncated_normal([noOfFilters], stddev=0.03),name=layerName+'_bias1D')
+		convLayer = tf.nn.conv1d(inputToBlock,wFilt,strides = [1, strideNumber, 1],padding=paddingType,name=layerName+'_Conv1D')		
+		preActivationLayer = tf.nn.bias_add(convLayer, bias)
+		return preActivationLayer
+
+	def poolLayer1D(self,inputToLayer,poolingType,poolSize,strideNumber,layerName):
+		if(poolingType == "MAXPOOL"):
+			pooledLayer = tf.nn.max_pool(inputToLayer,ksize = [1,poolSize,1],strides = [1,strideNumber,1],name = layerName+"_MaxPool1D")
+			#tf.layers.max_pooling2d(inputs=inputToBlock, pool_size=poolSize, strides=strideNumber,name = layerName)
+		else:
+			pooledLayer = inputToLayer
+		return pooledLayer
+
+	def convultionLayer2D(self,inputToBlock,filterSize,noOfFilters,strideNumber,paddingType,layerName):
+		noOfChannels = inputToBlock.shape[3]
+		filterShape = [filterSize,filterSize,noOfChannels,noOfFilters]
+		wFilt = tf.Variable(tf.truncated_normal(filterShape, stddev=0.03),name=layerName+'_wFilt')
+		bias = tf.Variable(tf.truncated_normal([noOfFilters], stddev=0.03),name=layerName+'_bias')
+		convLayer = tf.nn.conv2d(inputToBlock,wFilt,strides = [1, strideNumber,strideNumber, 1],padding=paddingType)		
+		preActivationLayer = tf.nn.bias_add(convLayer, bias)
+		return preActivationLayer
+
+	def poolLayer2D(self,inputToLayer,poolingType,poolSize,strideNumber,layerName):
+		if(poolingType == "MAXPOOL"):
+			pooledLayer = tf.nn.max_pool(inputToLayer,ksize = [1,poolSize,poolSize,1],strides = [1,strideNumber,strideNumber,1],name = layerName+"_MaxPool2D")
+			#tf.layers.max_pooling2d(inputs=inputToBlock, pool_size=poolSize, strides=strideNumber,name = layerName)
+		else:
+			pooledLayer = inputToLayer
+		return pooledLayer
+
+	def activationLayer(self,preActivationLayer,activation,layerName):
+		if(activation == "None"):
+			postActivationLayer = preActivationLayer
+		elif(activation == "Sigmoid"):
+			postActivationLayer = tf.nn.sigmoid(preActivationLayer,name = layerName+"_Sigmoid")
+		elif(activation == "Relu"):
+			postActivationLayer = tf.nn.relu(preActivationLayer, name = layerName+"_Relu")
+		elif(activation == "LeakyRelu"):
+			postActivationLayer = tf.nn.leaky_relu(preActivationLayer, name = layerName+"_LeaklyRelu")
+		else:
+			postActivationLayer = preActivationLayer
+		return postActivationLayer
+
 class optimizerFunctions:
 	
-	def learningRateDecay(self,decayRate = 0.1,InitialAlpha = 1e-04,epochNum):
+	def learningRateDecay(self,epochNum,decayRate = 0.1,InitialAlpha = 1e-04):
 		alpha = (1/(1+(decayRate*epochNum)))*InitialAlpha
 		return alpha
 	
@@ -119,7 +222,7 @@ class inputDataProcessing:
 	#reference: http://ischlag.github.io/2016/06/19/tensorflow-input-pipeline-example/
 
 	def createPipelineImageData(self,imageFilePathCollection,labelCollection,testDataRatio):
-		allImagePathTensor = ops.convert_to_tensor(imageFilePathCollection, dtype=dtypes.string)
+		allImagePathTensor = ops.convert_to_tensor(imageFilePathCollection, dtype=dtypes.float32)
 		allLabelsTensor = ops.convert_to_tensor(labelCollection, dtype=dtypes.int32)
 		# create a partition vector
 		partitions = [0] * len(imageFilePathCollection)
@@ -150,12 +253,12 @@ class inputDataProcessing:
 		return trainImageQueue,testImageQueue,trainLabelQueue,testLabelQueue
 	
 	def makePipelineBatchWise(self,trainDataQueue,trainLabelQueue,batchSize):
-		sampleDataBatch, sampleLabelBatch = tf.train.batch([sampleDataQueue, sampleLabelQueue],batch_size=batchSize)#,num_threads=1)
+		sampleDataBatch, sampleLabelBatch = tf.train.batch([trainDataQueue, trainLabelQueue],batch_size=batchSize)#,num_threads=1)
 		return sampleDataBatch, sampleLabelBatch
 	
-	def createPipelineForData(self,xInputDataList,yOutputDataList,testDataRatio):
-		allInputDataTensor = ops.convert_to_tensor(xInputDataList, dtype=dtypes.string)
-		allLabelsTensor = ops.convert_to_tensor(labelCollection, dtype=dtypes.int32)
+	def createPipelineForData(self,xInputDataList,yOutputDataList,testDataRatio,inputDataType = "float32",outputDataType = "float32"):
+		allInputDataTensor = ops.convert_to_tensor(xInputDataList, dtype=self.getTheDType(inputDataType))
+		allLabelsTensor = ops.convert_to_tensor(yOutputDataList, dtype=self.getTheDType(outputDataType))
 		# create a partition vector
 		partitions = [0] * len(xInputDataList)
 		partitions[:int(testDataRatio*len(xInputDataList))] = [1] * int((testDataRatio*len(xInputDataList)))
@@ -176,7 +279,15 @@ class inputDataProcessing:
 		testLabelQueue = testInputQueue[1]
 
 		return trainInputDataQueue,testInputDataQueue,trainLabelQueue,testLabelQueue
-
+	
+	def getTheDType(self,varType):
+		if(varType == "float32"):
+			outputType = dtypes.float32
+		elif(varType == "int32"):
+			outputType = dtypes.int32
+		else:
+			outputType = dtypes.string
+		return outputType
 
 	def normalizeBatch(self,inputDataBatchTensor):
 		batchMean, batchVariance = tf.nn.moments(inputDataBatchTensor,[0])
