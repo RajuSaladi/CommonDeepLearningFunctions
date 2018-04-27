@@ -405,3 +405,55 @@ class TensorflowModels:
 		mergedSummaryOp = tf.summary.merge_all()
 		
 		return mergedSummaryOp,optimizer,lossValue,finalOutputLayer
+
+
+	def ConvertTimeSeriesForMultiOutputRegression(self,inputDataFrame,startDateObject,inputSeriesLength,outputSeriesLength,dataTimeStep):
+
+		currentIndexPointer = startDateObject
+		dataCollectionX = []
+		dataCollectionY = []
+		inputDatesCollection = []
+		outputDatesCollection = []
+		i = 0
+		failedState = 0
+		dataExhausted = 0
+		#while(i < 100):
+		while(dataExhausted == 0):
+			inputX,outputY,currentIndexPointer,inputDatesList,outputDatesList,dataExhausted = self.getNextDataPoint(currentIndexPointer,inputDataFrame,inputSeriesLength,outputSeriesLength,dataTimeStep)
+			#inputX,outputY,currentIndexPointer,dataExhausted = self.getNextDataPoint(currentIndexPointer,inputDataFrame,inputSeriesLength,outputSeriesLength,dataTimeStep)
+			if ((len(inputX) == inputSeriesLength) & (len(outputY) == outputSeriesLength)):
+				dataCollectionX.append(inputX)
+				dataCollectionY.append(outputY)
+				inputDatesCollection.append(inputDatesList)
+				outputDatesCollection.append(outputDatesList)
+			else:
+				if(i > failedState + inputSeriesLength+outputSeriesLength - 1):
+					failedState = i
+					print("length mismatch..probably missing datapoints while extracting data at "+str(currentIndexPointer))
+			i = i + 1
+		#pdb.set_trace()
+		return dataCollectionX,dataCollectionY,currentIndexPointer,inputDatesCollection,outputDatesCollection
+		
+		
+	def getNextDataPoint(self,currentIndexPointer,inputDataFrame,inputSeriesLength,outputSeriesLength,dataTimeStepInMinutes):
+
+		dataExhausted = 0
+
+		inputTimeIntervalInMinutes = inputSeriesLength * dataTimeStepInMinutes
+		outputlengthTimeIntervalInMinutes = outputSeriesLength* dataTimeStepInMinutes
+		lowerPoint = currentIndexPointer - datetime.timedelta(minutes = inputTimeIntervalInMinutes)
+		upperPoint = currentIndexPointer + datetime.timedelta(minutes = outputlengthTimeIntervalInMinutes)
+		#pdb.set_trace()
+		inputDataPoints = list(inputDataFrame[(inputDataFrame.index.to_pydatetime() > lowerPoint) & (inputDataFrame.index.to_pydatetime() <= currentIndexPointer)].RoomTemperatureValue)
+		inputDataPoints = [round(data, 2) for data in inputDataPoints]
+		inputDatesList = list(inputDataFrame[(inputDataFrame.index.to_pydatetime() > lowerPoint) & (inputDataFrame.index.to_pydatetime() <= currentIndexPointer)].index)
+		outputDataPoints = list(inputDataFrame[(inputDataFrame.index.to_pydatetime() > currentIndexPointer) & (inputDataFrame.index.to_pydatetime() <= upperPoint)].RoomTemperatureValue)
+		outputDataPoints = [round(data, 2) for data in outputDataPoints]
+		outputDatesList = list(inputDataFrame[(inputDataFrame.index.to_pydatetime() > currentIndexPointer) & (inputDataFrame.index.to_pydatetime() <= upperPoint)].index)
+		currentIndexPointer= currentIndexPointer + datetime.timedelta(minutes = dataTimeStepInMinutes)
+		dataExhausted = len(inputDataFrame[inputDataFrame.index.to_pydatetime() > currentIndexPointer]) == 0
+		if(dataExhausted == 1):
+			print("Points greaterthan currentPointer is "+str(len(inputDataFrame[inputDataFrame.index.to_pydatetime() > currentIndexPointer]))+" for "+str(currentIndexPointer))
+		return inputDataPoints,outputDataPoints,currentIndexPointer,inputDatesList,outputDatesList,dataExhausted
+		#return inputDataPoints,outputDataPoints,currentIndexPointer,dataExhausted
+
