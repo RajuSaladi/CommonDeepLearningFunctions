@@ -322,3 +322,86 @@ class inputDataProcessing:
 			coord.join(threads)
 			sess.close()
 """
+
+
+class RNNFunctions:
+
+	"""	
+	def lstmCellDefnition(self,sizeOfLSTM):
+		return tf.contrib.rnn.BasicLSTMCell(sizeOfLSTM)
+
+	def stackingOfLSTMCell(self,lstmCellDef,noOfLayers):
+		return tf.contrib.rnn.MultiRNNCell([lstmCellDef for _ in range(noOfLayers)])
+
+	def LSTMModelDefnition_(self,inputX,sizeOfLSTM,noOfLayers):
+		lstmCellDef = self.lstmCellDefnition(sizeOfLSTM)
+		stackedLSTMLayers = self.stackingOfLSTMCell(lstmCellDef,noOfLayers)
+		finalOutput, finalState = tf.nn.dynamic_rnn(cell=stackedLSTMLayers,inputs=inputX,dtype=tf.float32)
+		return finalOutput, finalState
+	"""
+
+	def LSTMCellsWithDropout(self,layersInfoDictList,isDropoutAllowed = 0):
+		if (isDropoutAllowed):
+			return [tf.nn.rnn_cell.DropoutWrapper(tf.nn.rnn_cell.BasicLSTMCell(currentLayerInfo['NoOfCells'],state_is_tuple=True),currentLayerInfo['KeepProbability']) for currentLayerInfo in layersInfoDictList]
+		else:
+			return [tf.nn.rnn_cell.BasicLSTMCell(currentLayerInfo['NoOfCells'],state_is_tuple=True) for currentLayerInfo in layersInfoDictList]
+
+	def getLSTMLayerConfiguration(self,noOfLSTMCellsInOneLayer,noOfLayers):
+		layerInfo = [{'NoOfCells':noOfLSTMCellsInOneLayer,'KeepProbability':1}]*noOfLayers
+		return layerInfo
+
+	def LSTMModelDefnition(self,inputX,noOfLSTMCellsInOneLayer,noOfLayers):
+		rnnLayerInfo = self.getLSTMLayerConfiguration(noOfLSTMCellsInOneLayer,noOfLayers)
+		stackedLSTMlayers = tf.nn.rnn_cell.MultiRNNCell(self.LSTMCellsWithDropout(rnnLayerInfo), state_is_tuple=True)
+		#squeezedX = learn.ops.split_squeeze(1, noOfLSTMCellsInOneLayer, X)
+		#squeezedX =  tf.unstack(inputX, num=noOfLSTMCellsInOneLayer, axis=1)
+		output, layers = tf.nn.dynamic_rnn(stackedLSTMlayers, inputX, dtype=tf.float32)
+		return output, layers
+
+	"""
+	X = tf.placeholder(tf.int32, [batch_size, num_steps])
+	lstmCellDef = lstmCellDefnition(noOfInputs)
+	stackedLSTMLayers = stackingOfLSTMCell(lstmCellDef,noOfLayers)
+	final_outputs, final_state = tf.nn.dynamic_rnn(cell=stackedLSTMLayers,inputs=X,dtype=tf.float32)
+
+	"""
+
+class TensorflowModels:
+
+
+	def RNNForeCastModel(self,currentBatchX,currentBatchY,inputSeriesLength,outputSeriesLength,noOfLSTMLayers,LEARNINGRATE):
+
+		RNNFunc= RNNFunctions()
+		cTF = CommonTensorflowFunctions()
+
+		noOfLSTMCellsInOneLayer = inputSeriesLength
+		#stateSize = noOfLSTMCellsInOneLayer
+
+		#currentBatchX = tf.placeholder(tf.float32,[None,inputSeriesLength,1])
+		#currentBatchY = tf.placeholder(tf.float32,[None,outputSeriesLength])
+
+		with tf.name_scope('LSTMLayers'):
+			outputFromLSTM, outputStateFromLSTM = RNNFunc.LSTMModelDefnition(currentBatchX,noOfLSTMCellsInOneLayer,noOfLSTMLayers)
+		
+		with tf.name_scope('WeightsandBias'):
+			WeightMatrixForOutputLayer = tf.Variable(np.random.rand(noOfLSTMCellsInOneLayer, outputSeriesLength),dtype=tf.float32)
+			biasForOutputLayer = tf.Variable(np.zeros(shape = (1,outputSeriesLength)),dtype=tf.float32)
+			cTF.getSummariesForVariables(WeightMatrixForOutputLayer)
+			cTF.getSummariesForVariables(biasForOutputLayer)
+
+		with tf.name_scope('RegressionLayer'):
+			outputRegressionLayer = tf.map_fn(lambda currentCellLSTMOutput: tf.matmul(currentCellLSTMOutput, WeightMatrixForOutputLayer) + biasForOutputLayer, outputFromLSTM)
+			finalOutputLayer = tf.squeeze(tf.split(outputRegressionLayer,noOfLSTMCellsInOneLayer,axis=1)[-1],axis=1)
+			tf.summary.histogram('histogramOutputLayer', outputRegressionLayer)
+
+
+		with tf.name_scope('LossFunction'):
+			lossValue = tf.reduce_mean(tf.square(currentBatchY - finalOutputLayer))
+			tf.summary.scalar("MeanSquareLoss", lossValue)
+
+		with tf.name_scope('OptimizationTraining'):
+			optimizer = tf.train.AdamOptimizer(learning_rate = LEARNINGRATE).minimize(lossValue)
+
+		mergedSummaryOp = tf.summary.merge_all()
+		
+		return mergedSummaryOp,optimizer,lossValue,finalOutputLayer
